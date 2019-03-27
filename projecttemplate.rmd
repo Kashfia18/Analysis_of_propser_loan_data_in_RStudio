@@ -1,0 +1,1116 @@
+---
+title: "Exploratory data analysis on prosper loan data"
+author: "Kashfia Faruque"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: html_document
+editor_options: 
+  chunk_output_type: inline
+---
+========================================================
+
+```{r include=FALSE}
+# knitr: Suppress code/messages/warnings 
+# Set default plot options and center them
+knitr::opts_chunk$set(fig.width=9,fig.height=5,fig.path='Figs/',
+                      fig.align='center',tidy=TRUE,
+                      echo=FALSE,warning=FALSE,message=FALSE)
+
+```
+
+```{r}
+# packages used for the project
+library(dplyr)
+library(ggplot2)
+library(lubridate)
+library(RColorBrewer)
+library(stringr)
+library(gridExtra)
+library(GGally)
+library(memisc)
+detach("package:dplyr", character.only = TRUE)
+library("dplyr", character.only = TRUE)
+
+```
+
+```{r}
+#Load the data
+prosper_loan_data<-read.csv("prosperLoanData.csv")
+```
+
+This report explores prosper loan data collected from Prosper a peer to peer lending company. The data contains various information in 81 variables on 113,937 borrowers from November 2005 to March 2014. The company took off in 2005 and in 2009 completely changed their underwriting process, to improve their services. The data was analysed from different angles using single, bi or multi variable
+
+# Univariate Plots Section
+
+```{r}
+#no of rows and columns
+dim(prosper_loan_data)
+```
+
+There are 113937 rows and 82 columns in the dataset. Each row containing information of a unique borrower.
+
+```{r}
+# types of data
+str(prosper_loan_data)
+```
+
+we convert the date on which listing was created from factor to date. And find the start and end date of the dataset.
+
+```{r}
+#convert date from factor to character
+prosper_loan_data<-prosper_loan_data%>% mutate_at('ListingCreationDate',as.character)
+
+#convert the date charater to date
+prosper_loan_data$ListingCreationDate<-as.Date(
+  ymd_hms(prosper_loan_data$ListingCreationDate))
+
+#min and max dates
+min(prosper_loan_data$ListingCreationDate) 
+max(prosper_loan_data$ListingCreationDate) 
+```
+
+
+```{r}
+#create new variable with the year only
+prosper_loan_data$ListingCreationYear<- as.numeric(format(prosper_loan_data$ListingCreationDate,'%Y'))
+```
+
+```{r}
+#Bar plot-Distribution of borrowers by years
+ggplot(data=prosper_loan_data, aes(x=ListingCreationYear))+
+  geom_bar()+
+  scale_x_continuous(breaks = seq(2005, 2014, 1))
+```
+
+From the above plot we can see the distribution of the listings over the years. The number of listings increased from 2006 to 2008. But reached it's minimum in 2009. After 2009 the number of borrowers have continued to increase every year. This is an indication that the business continued to grow. For 2014 we only have about 2 months of data.  
+
+The dip in 2009 was for the company changing it's underwriting process not due to an economic condition.
+
+Let's check that if there are records on 1st August in 2009 (new system rolled after July 2009)
+
+```{r}
+#Find if the new system was rolled from 1st of August or not
+any(prosper_loan_data$ListingCreationDate=="2009-08-01")
+```
+
+Prosper started their new system after July 2009 so 1st August 2009.
+
+```{r}
+#number or percent of borrowers for each credit group
+prosper_loan_data%>%
+  group_by(CreditGrade)%>%
+  summarise(n=n(), precent=n/nrow(prosper_loan_data)*100)
+```
+
+Finding the percent of each credit grade, we can see that, 74.6% of the records have borrowed after the Prosper Rating was introduced after July 2009. So they don't have a credit grade. We will mainly be working with this data set.
+
+```{r}
+#no of borrowers in 2009
+prosper_loan_data%>%
+  filter(ListingCreationYear==2009)%>%
+  summarise(no_borrowers_in_2009=n())
+```
+
+In 2009 there were 2206 borrowers
+
+```{r}
+#no/percent of borrowers from August 2009 to December 2009
+prosper_loan_data%>%
+  filter(ListingCreationDate>="2009-08-01" & ListingCreationDate<="2009-12-31")%>%
+  summarise(no_borrowers_from_August_2009=n(), percent=100*no_borrowers_from_August_2009/2206)
+```
+
+So we see that in 2009 about 90.5 % of that year's borrowers enrolled under the new system. So this seems to be the reason why there are less count in this year. Prosper spent 6 months of the year in improving their system/services.
+
+Summary of LoanOriginalAmount:
+
+```{r}
+#Stats summary of loan original amount
+summary(prosper_loan_data$LoanOriginalAmount)
+```
+
+From the summary of loan original amount we see that the loan range is 1000-35000 dollars. With 75% Borrowers getting loan between 1000-12000 dollars. The median and mean being 6500 and 8337 dollars respectively.
+
+```{r}
+#histogram-distribution of the loan original amount
+ggplot(data=prosper_loan_data, aes(x=LoanOriginalAmount, color=Term))+
+  geom_histogram(binwidth = 1000, color='black', fill='#099DD9', center=1500)+
+  scale_x_continuous(breaks = seq(1000, 35000, 2000))+
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+```
+
+The distribution of loan original amount shows that popular amount of loans are 1000-5000, 9000-10000, 14000-15000. This is in line with my assumption that there will be more loans of lower amount than higher amounts. And also in line with the above summary.
+
+```{r}
+#bar plot-percent of each credit grade
+prosper_loan_data%>%
+    filter(CreditGrade!="")%>%
+   group_by(CreditGrade)%>%
+  summarise(n=n())%>%
+  mutate(percent = 100*n / sum(n))%>%
+  ggplot(aes(x=CreditGrade, y=percent))+
+  geom_bar(stat = "identity")+
+  geom_text(aes(label = round(percent,2)), size = 3, position = position_stack(vjust = 0.5))
+```
+
+From the percent distribution of credit grades We see that B, C, and D credit grades was popular for lending before August 2009.
+
+```{r}
+#set levels of ProsperRating..Alpha.
+prosper_loan_data$ProsperRating..Alpha.<- 
+factor(prosper_loan_data$ProsperRating..Alpha., levels = c("AA","A", "B", "C", "D", "E", "HR" ))
+```
+
+```{r}
+#bar plot-percent of each prosper rating group across all years from August 2009
+prosper_loan_data%>%
+    filter(ListingCreationDate>"2009-08-01")%>%
+   group_by(ProsperRating..Alpha.)%>%
+  summarise(n=n())%>%
+  mutate(percent = 100*n / sum(n))%>%
+  ggplot(aes(x=ProsperRating..Alpha., y=percent))+
+  geom_bar(stat = "identity")+
+  geom_text(aes(label = round(percent,2)), size = 3, position = position_stack(vjust = 0.5))
+```
+
+We can see under the new system, majority of Prosper Borrowers have a Rating of A-D.So we see that introduction of the new system has made more groups popular than before.
+
+It would be interesting to see later if the proportion of bad borrowers (chargedoff, defaulted) changed over time.
+
+```{r}
+#bar plot-purposes of taking loan
+ggplot(data=prosper_loan_data, aes(x=ListingCategory..numeric.))+
+  geom_bar()
+```
+
+We want to know for what purpose Prosper borrowers take loans. From the above bar plot we see that debt consolidation is the most popular reason for taking loans from Prosper. Given that the loan range is from 1000-35000 that makes sense. It would also be interesting to see the loan amounts borrowers take for debt consolidation.
+
+```{r}
+#histogram-Amounts used for debt consolidation
+prosper_loan_data%>%
+  filter(ListingCategory..numeric.==as.factor(1))%>%
+  ggplot(aes(x=LoanOriginalAmount))+
+  geom_histogram()+
+  scale_x_continuous(breaks=seq(1000, 35000, 2000))+
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+```
+
+We can see the loan amounts for debt consolidation spans from 1000 all the way till 35000 dollars. Popular amounts are 3000-4000, 10000-11000, 15000-16000.
+
+```{r}
+#histogram-how many months they usually take loan
+ggplot(data=prosper_loan_data, aes(x=Term))+
+  geom_histogram()
+```
+
+We see that 36 months is the most popular loan term. 
+
+```{r}
+#bar plot-Employment status
+ggplot(data=prosper_loan_data, aes(x=EmploymentStatus))+
+  geom_bar()+
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+```
+
+Most borrowers are employed.
+
+```{r}
+# no/percent of borrowers who are homeowners
+prosper_loan_data%>%
+  group_by(IsBorrowerHomeowner)%>%
+  summarise(n=n(), precent=n/nrow(prosper_loan_data)*100)
+```
+
+Looks like the ratio of home owners to not home owners is almost 50-50.
+
+Next we will look at the percentage of different loan status groups:
+
+```{r}
+#bar plot-percent of borrowers in each loan status groups
+prosper_loan_data%>%
+   group_by(LoanStatus)%>%
+  summarise(n=n())%>%
+  mutate(percent = 100*n / sum(n))%>%
+  ggplot(aes(x=LoanStatus, y=percent))+
+  geom_bar(stat = "identity")+
+  geom_text(aes(label = round(percent,2)), size = 3, position = position_stack(vjust = 0.5))+
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+```
+
+Most people belong to "Current" loan status. Followed by "Completed" status. We will later see what listing years the "Current" group belongs. I am assuming 2013-2014 mostly.
+
+We next check what percent of the current group are falling behind in their payment. We filter out the current loan status group where  TotalProsperPaymentsBilled > OnTimeProsperPayments. 
+
+```{r}
+# no of current people who are starting to fall off from their payment.
+prosper_loan_data%>%
+  filter(LoanStatus=='Current' & TotalProsperPaymentsBilled>OnTimeProsperPayments)%>%
+  summarise(n=n(), percent=100*n/56576)
+```
+
+3.13% of "Current" loan status borrowers might be falling short on their payments.
+
+Summary of StatedMonthlyIncome:
+
+```{r}
+#Stat summary of stated monthly income
+summary(prosper_loan_data$StatedMonthlyIncome)
+```
+
+```{r}
+#histogram-stated monthly income
+ggplot(data=prosper_loan_data, aes(x=StatedMonthlyIncome))+
+  geom_histogram(color='black', fill='#099DD9')+
+  scale_x_continuous(limits = c(0,7000))+
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+```
+
+From the above summary results of stated monthly income we see that 75% Borrowers earn less or equal to 6825 dollars. The median value being 4667 and the mean being 5608 dollars. In the histogram plot of stated monthly income, We set limits on X-axis till 7000 dollar as otherwise we were getting just one bar at the very left end.
+
+Summary of DebtToIncomeRatio:
+
+```{r}
+#Stats summary of debt to income ratio
+summary(prosper_loan_data$DebtToIncomeRatio)
+```
+
+```{r}
+#histogram-debt to income ratio
+ggplot(data=prosper_loan_data, aes(x=DebtToIncomeRatio))+
+  geom_histogram(color='black', fill='#099DD9')+
+  scale_x_continuous(limits = c(0, 1.25))
+```
+
+The histogram plot of debt to income ratio is right skewed, which is expected as lower debt to income ratio is a factor that would help borrowers get loan from borrowers. From the summary results we see that 75% borrowers have debt to income ratio less or equal to 0.32
+
+Summary of EstimatedReturn:
+
+```{r}
+#Stats summary of estimated return
+summary(prosper_loan_data$EstimatedReturn)
+```
+
+```{r}
+#histogram-distribution of the estimated return
+ggplot(data=subset(prosper_loan_data, LoanStatus=='Completed'), aes(x=EstimatedReturn))+
+  geom_histogram()
+```
+
+The estimated return distribution ranges from -0.183 to 0.284. With the median being 0.092. 
+
+Tha above results make me wonder how an estimated return can be negative. So, we filter out records where EstimatedReturn<0 and see the summary as below:
+
+```{r}
+# why is the estimated return negative
+summary(prosper_loan_data%>%
+  filter(EstimatedReturn<0))
+```
+
+From the summary we can see that majority of borrowers(183/195) of this group belong to the high risk group(HR) of prosper rating system. We can see the that the total inquiries is quiet lot from the whole data set with median value of 8 compared to a 4 for the whole data set. In terms of Bank card utilization we can see a median value of 0.78 compared to the 0.6 value for the whole data set. Other reasons including these might have contributed for a negative estimated return for this group.
+
+Summary of BorrowerAPR:
+
+```{r}
+#stats summary of BorrowerAPR
+summary(prosper_loan_data$BorrowerAPR)
+```
+
+```{r}
+#histogram-distribution of BorrowerAPR
+ggplot(data=prosper_loan_data, aes(x=BorrowerAPR))+
+  geom_histogram()
+```
+
+Borrowers APR distribution ranged from 0.007 to 0.5 with median at 0.21. It would be interesting to look at the distribution of Borrower APR by ProsperRating. We expect the highest rating AA to have low APR and the lowest rating HR to have the highest APR.
+
+Summary of TotalInquiries:
+
+```{r}
+#Stats summary of total inquiries
+summary(prosper_loan_data$TotalInquiries)
+```
+
+```{r}
+#bar plot-distribution of total inquiries
+ggplot(data=prosper_loan_data, aes(x=TotalInquiries))+
+  geom_bar()+
+  scale_x_continuous(limits=c(0,10), breaks=seq(0,10, 1))
+```
+
+From the bar plot we can see that the plot is right skewed. With the count decreasing as total number of inquiries increased. The median value is 4 for total inquiries.
+
+Summary of Delinquencies_Last7Years:
+
+```{r}
+#stats summary of delinquencies in last 7 years
+summary(prosper_loan_data$DelinquenciesLast7Years)
+```
+
+```{r}
+#bar plot-distribution of delinquencies in last 7 years
+ggplot(data=prosper_loan_data, aes(x=DelinquenciesLast7Years))+
+  geom_bar()+
+  scale_x_continuous(limits=c(0,10), breaks=seq(0,10, 1))
+```
+
+Distribution of delinquencies in the last 7 years was plotted above. This plot also is right skewed. The X-axis was limited till 10 as 75% data was less or equal to 3. The median value is 0. So it's an extremely rare event for prosper borrowers. 
+
+Summary of Bankcard Utilization:
+
+```{r}
+#stats summary of BankCard utilization
+summary(prosper_loan_data$BankcardUtilization)
+```
+
+```{r}
+#histogram-distribution of bank card utilization
+ggplot(data=prosper_loan_data, aes(x=BankcardUtilization))+
+  geom_histogram(binwidth = 0.1)+
+  scale_x_continuous(limits=c(0,2), breaks=seq(0,2, 0.2))
+```
+
+Bank Card utilization is the percentage of available revolving credit that is utilized at the time the credit profile was pulled.The median value for this variable is 0.6. So we see a plot that has more than 75% within 1.0. We see the count increasing with increase in Bank card utilization till 0.9. Most of the Borrowers are borrowing money for debt consolidation, which might be the reason why we see count increasing with higher card utilization.
+
+Summary of Trades opened in last 6 months:
+
+```{r}
+#stats summary of Trades opened last 6 months
+summary(prosper_loan_data$TradesOpenedLast6Months)
+```
+
+```{r}
+#bar plot-distribution of trades opened last 6 months
+ggplot(data=prosper_loan_data, aes(x=TradesOpenedLast6Months))+
+  geom_bar()+
+  scale_x_continuous(limits=c(0,10), breaks=seq(0,10,1))
+```
+
+The variable TradesOpenedLast6Months has a median value of 0 and a 3rd quartile value of 1. So 75% Borrowers will have no or just one trades opened in last 6 months.
+
+# Univariate Analysis
+
+
+### What is the structure of your dataset?
+This dataset contains records from 113937 borrowers with 81 variables. These variables contain all information regarding the borrower and the loan. Such as, original amount of loan, the APR and interest rate, for how many months it has been sanctioned, the credit score range, the prosper score and rating, payments by borrowers etc. 
+
+A noteworty variable is ProsperRating..Alpha. that shows the prosper rating of the borrowers based on their proprietary rating system.Each letter grade corresponds to an estimated average annualized loss rate range.So it is an indicator of expected loss. The variable is an ordered factor variable with the following levels:
+
+(low)----------->(High) in terms of risk.
+
+AA, A, B, C, D, E, HR
+
+Loan Status is another important variable, showing the current status of the loan: Cancelled, Chargedoff, Completed, Current, Defaulted, FinalPaymentInProgress, PastDue. The PastDue status will be accompanied by a delinquency bucket.
+
+Other important observations:
+
+* The loan range is from 1000-35000 dollars.
+* The prosper rating system was introduced after July, 2009
+* 77% borrowers borrow money for 36 months.
+* The APR has a range of 0.07-0.5.
+* Most borrowers use prosper for debt consolidation.
+* The estimated return can range from -0.183-0.284.
+* Most of the borrowers are employed.
+* 75% of the borrowers have a debt to income ratio of 0.32 or less.
+
+### What is/are the main feature(s) of interest in your dataset?
+
+According to prosper.com prosper rating represents an estimated average annualized loss rate range to the investor. The Estimated Loss mainly depends on Prosper Score and Credit Score. Prosper Score is the custom risk score built by prosper. So I am interested in identifying the characteristics of the borrowers that determines the prosper score. 
+
+I am also interested in finding out if lending money on this platform is beneficial for lenders.
+
+### What other features in the dataset do you think will help support your \
+investigation into your feature(s) of interest?
+
+Features like number of inquiries, bank card utilization, number of deliquent accounts, number of recently opened trade, debt to income ratio, stated monthly income seems to be variables that could determine the prosper score.
+
+I also want to determine the difference between the estimated return and the annualized return. This will show how much in line the predictions of prosper is for the estimated return. According to Investopedia "An annualized total return is the geometric average amount of money earned by an investment each year over a given time period. It is calculated as a geometric average to show what an investor would earn over a period of time if the annual return was compounded."
+
+### Did you create any new variables from existing variables in the dataset?
+
+Yes. In the univariate section I added the year, the listing originated. I used lubridate package to get the year from the date.
+
+I also have calculated the following variables in the multivariate section to see the returns of the records in the dataset:
+
+* invested_amount=LoanOriginalAmount-LP_ServiceFees-LP_CollectionFees
+* return_obtained=(LP_CustomerPayments-invested_amount)/invested_amount
+* annualized_return=(1 + return_obtained)^(12/Term) - 1
+
+### Of the features you investigated, were there any unusual distributions? \
+Did you perform any operations on the data to tidy, adjust, or change the form \
+of the data? If so, why did you do this?
+
+When I plotted estimated return. I found the range to be -0.183 to 0.284. It was odd to see a negative return. So then I filtered out data based on estimated return less or equal to zero. The data showed that majority of borrowers(183/195) of this group belong to the high risk group(HR) of prosper rating system. We can see that the total inquiries is quiet lot with median value of 8 compared to a 4 for the whole data set. In terms of Bank card utilization we can see a median value of 0.78 compared to the 0.6 value for the whole data set. These might be the reasons of a negative return.
+
+For the dataset I had to change the ListingCreationDate variable from factor to date. I also separated out the year in a variable called ListingCreationYear for further analysis. 
+
+Later I have also created Invested_amount which is the amount that the investers spent on a loan. And returned_amount, which is the amount borrowers have returned. We used this to calculate the annualized_return which is the amount of money earned by an investment each year over a given time period. We compare this with the estimated return to see how much is the difference between estimated and actual return.
+
+# Bivariate Plots Section
+
+Let's see what the estimated loss rate is for each prosper rating group.
+
+```{r}
+#box plot-Estimated loss rates range per rating
+prosper_loan_data%>%
+  filter(ListingCreationDate>="2009-08-01")%>%
+ggplot(aes(ProsperRating..Alpha., EstimatedLoss*100))+
+         geom_boxplot()+
+  scale_y_continuous(limits=c(0, 25), breaks=seq(0,25, 5))
+
+```
+
+We can see the range of the estimated loss rate for each rating group in the plot above. AA has the lowest estimated loss rate and with each rating the loss rate increased.
+
+Let's see the effect of the two variables, prosper score and credit score on the Estimated Loss.
+
+```{r}
+#scatter plot-ProsperScore vs EstimatedLoss
+prosper_loan_data%>%
+  filter(ListingCreationDate>="2009-08-01")%>%
+ggplot(aes(y=EstimatedLoss, x=ProsperScore))+
+  geom_jitter(alpha=1/25)
+```
+
+We see as the prosper score increased the estimated loss decreased.
+
+```{r}
+#scatter plot-Estimated loss vs credit score
+prosper_loan_data%>%
+  filter(ListingCreationDate>="2009-08-01")%>%
+ggplot(aes(y=EstimatedLoss, x=CreditScoreRangeLower))+
+  geom_jitter(alpha=1/25)
+```
+
+As before we can see that as the credit scores increased the Estimated Loss decreased or the prosperratings improved. Here we used credit score range lower to keep things simple.
+
+
+Linear Model of Estimated Loss with Prosper Score and CreditScore
+
+```{r}
+#linear model-Predict estimated loss using credit score and prosper score
+m1 <- lm(formula=EstimatedLoss ~CreditScoreRangeLower, data = prosper_loan_data)
+m2 <- update(m1, ~ . + ProsperScore)
+
+mtable(m1, m2)
+```
+
+We create this linear model as prosper calculates the estimated loss using prosper score and credit score. As can be seen from the R^2 value, the Credit score can explain 26.1% of the variance in estimated Loss, while both Credit score and prosper score combined can explain 53.4% of the variance. It is evident that other factors contribute to rest of the variance observed.
+
+We would now like to know which variables contribute to the prosper score.
+
+Analysis of variables that could contribute to prosper score:
+
+Variables used for the ggmatrix-ProsperRating..Alpha., ProsperScore, CreditScoreRangeLower, InquiriesLast6Months, TotalInquiries, Delinquencies Last7Years, BankcardUtilization, TradesOpenedLast6Months, DebtToIncomeRatio 
+
+```{r fig.width=15, fig.height=15}
+#ggmatrix plot
+prosper_loan_data_subset_1<-prosper_loan_data%>%
+  select("ProsperRating..Alpha.","ProsperScore", "CreditScoreRangeLower", "InquiriesLast6Months", "TotalInquiries", "DelinquenciesLast7Years", "BankcardUtilization", "TradesOpenedLast6Months", "DebtToIncomeRatio")
+prosper_loan_data_samp_1<- prosper_loan_data_subset_1[sample(1:length(prosper_loan_data_subset_1$ProsperScore), 10000),]
+ggpairs(prosper_loan_data_samp_1, 
+        lower = list(continuous = wrap("points", shape = I('.'))), 
+        upper = list(combo = wrap("box", outlier.shape = I('.')))
+      )
+```
+
+I choose a few variables that could have an impact on the ProsperScore. We can see that as prosper score increases number of inquires in last 6 months, total inquiries, the number of trades opened last 6 months as well as Bankcard utilization decreases. 
+
+We see a negative relationship between Delinquencies last 7 years with inquiries in last 6 months. More inquiries would mean they need a loan. So these borrowers would try their best to avoid delinquency as it would make it difficult to get a loan. 
+
+We see a negative relationship between delinquencies of 7 years and trades opened last 6 months.So it is important to have good standing in delinquencies for opening multiple trades.
+
+We see that as the DebtToIncome Ratio decreases, trades opened in last 6 months increases. It could be that the trades have produced income to decrease the ratio. We will check this later.
+
+We see that as the DebtToIncome Ratio decreases the no of inquiries increases. So borrowers wanting more loan tend to be more vigilant about their spending in terms of their Income.
+
+Prosper Score vs Inquiries:
+
+```{r}
+#scatter plot-prosper score vs inquiries
+T_inq_p<-prosper_loan_data%>%
+  filter(ListingCreationDate>="2009-08-01")%>%
+ggplot(aes(y=ProsperScore, x=TotalInquiries))+
+  geom_jitter()+
+  scale_x_continuous(limits=c(0, 40), breaks=seq(0, 40, 10))
+
+Inq_6_months_p<-prosper_loan_data%>%
+  filter(ListingCreationDate>="2009-08-01")%>%
+ggplot(aes(y=ProsperScore, x=InquiriesLast6Months))+
+  geom_jitter()+
+  scale_x_continuous(limits=c(0, 35), breaks=seq(0, 35, 10))
+
+
+grid.arrange(T_inq_p, Inq_6_months_p)
+```
+
+Here we plot both total inquiries and inquiries last 6 months, to see the effect of total and recent inquiries on prosper score. We see that as the number of inquiries increase the Prosper Score falls. So number of inquiries could be an important variable for determining prosperscore.
+
+
+```{r}
+#scatter plot-inquiries vs prosper score as factor
+prosper_loan_data%>%
+  filter(ListingCreationDate>="2009-08-01")%>%
+ggplot(aes(x=as.factor(ProsperScore), y=TotalInquiries))+
+  geom_jitter(alpha=1/50)
+```
+
+Here I have plotted the prosper score as factor on the x-axis. I felt plotting the prosper score on the X-axis shows the relationship much more clearer.
+
+Now to look at the range of the inquiries for each rating group we need a box plot. Using the categorical variable Prosper Ratings lets see the ranges of the inquiry variable for each rating group. 
+
+```{r}
+#box plot-prosper score vs inquiries
+T_inq<-prosper_loan_data%>%
+  filter(ListingCreationDate>="2009-08-01")%>%
+ggplot(aes(x=as.factor(ProsperScore), y=TotalInquiries))+
+  geom_boxplot()+
+  ylim(0,20)
+
+Inq_6_months<-prosper_loan_data%>%
+  filter(ListingCreationDate>="2009-08-01")%>%
+ggplot(aes(x=as.factor(ProsperScore), y=InquiriesLast6Months))+
+  geom_boxplot()
+
+grid.arrange(T_inq, Inq_6_months)
+```
+
+For the boxplot we limit our y axis till 20. For better visualizations. As the number of inquiries increase the prosper score decreases. We see most inquiries are 8 or less. Better score borrowers are much more financially sufficient and thus have less number of inquiries.
+
+Prosper Score vs Delinquencies:
+
+```{r}
+#scatter plot-prosper score as factor vs delinquencies
+C_delinq_p<-prosper_loan_data%>%
+  filter(ListingCreationDate>="2009-08-01")%>%
+ggplot(aes(x=as.factor(ProsperScore), y=CurrentDelinquencies))+
+  geom_jitter(alpha=1/75)+
+  ylim(0, 10)
+
+Delinq_7_years_p<-prosper_loan_data%>%
+  filter(ListingCreationDate>="2009-08-01")%>%
+ggplot(aes(x=as.factor(ProsperScore), y=DelinquenciesLast7Years))+
+  geom_jitter(alpha=1/75)+
+  ylim(0,10)
+
+grid.arrange(C_delinq_p, Delinq_7_years_p)
+
+```
+
+For delinquencies we see some decrease in number with increase of prosper score especially for the higher scores 9-11.  For better view we have limited our y-axis to 10. We will check out the box plot for a better grasp.
+
+```{r}
+#box plot-prosper score vs delinquencies
+C_delinq<-prosper_loan_data%>%
+  filter(ListingCreationDate>="2009-08-01")%>%
+ggplot(aes(x=as.factor(ProsperScore), y=CurrentDelinquencies))+
+  geom_boxplot()+
+  ylim(0, 20)
+
+Delinq_7_years<-prosper_loan_data%>%
+  filter(ListingCreationDate>="2009-08-01")%>%
+ggplot(aes(x=as.factor(ProsperScore), y=DelinquenciesLast7Years))+
+  geom_boxplot()+
+  ylim(0,20)
+
+grid.arrange(C_delinq, Delinq_7_years)
+```
+
+Although the median is the same for all prosper score, we can see as the score go from worse to good we see the number of delinquencies decreasing. It's more visible in case of the last 7 years.Most of the borrowers have 5 or less Delinquencies in the last 7 years. Better prosper score borrowers tend to pay their bills on time.For the box plots I have limited the y-axis to 20.
+
+Prosper Score vs AvailableBankcardCredit:
+
+```{r}
+# scatter plot-prsoper score as factor vs AvailableBankcardCredit
+prosper_loan_data%>%
+  filter(ListingCreationDate>="2009-08-01")%>%
+ggplot(aes(x=as.factor(ProsperScore), y=AvailableBankcardCredit))+
+  geom_jitter(alpha=1/50)
+
+```
+
+```{r}
+#box plot-prosper score as factor vs available bank card credit
+prosper_loan_data%>%
+  filter(ListingCreationDate>="2009-08-01")%>%
+ggplot(aes(x=as.factor(ProsperScore), y=AvailableBankcardCredit))+
+  geom_boxplot()
+
+```
+
+More bank card credit is available for better prosper score borrowers. As they can pay off their credit card debt on time, and thus have more available bank card credit.We see most borrowers having 50000 orless availanle bank card credit.
+
+Prosper Score vs BankcardUtilization:
+
+```{r}
+#scatter plot-prosper score as factor vs Bank card utilization 
+prosper_loan_data%>%
+  filter(ListingCreationDate>="2009-08-01")%>%
+ggplot(aes(x=as.factor(ProsperScore), y=BankcardUtilization))+
+  geom_jitter(alpha=1/50)
+
+```
+
+```{r}
+#box plot-prosper score as factor vs bank card utilization
+prosper_loan_data%>%
+  filter(ListingCreationDate>="2009-08-01")%>%
+ggplot(aes(x=as.factor(ProsperScore), y=BankcardUtilization))+
+  geom_boxplot()
+
+```
+
+From the median values of the box plot we can see that as Bank card utilization decreases the prosper score gets better.Other than the outliers, Bank card utilization is less than 1. 1 means utilization of all credit card amount.Borrwers of better prosper score tend to pay off card balance better than the lower score borrowers.
+
+Prosper Score vs Trades opened:
+
+```{r}
+#scatter plots-prosper score as factor vs trades opened
+T_trades_p<-prosper_loan_data%>%
+  filter(ListingCreationDate>="2009-08-01")%>%
+ggplot(aes(x=as.factor(ProsperScore), y=TotalTrades))+
+  geom_jitter(alpha=1/25)
+
+Months6_Trades_p<-prosper_loan_data%>%
+  filter(ListingCreationDate>="2009-08-01")%>%
+ggplot(aes(x=as.factor(ProsperScore), y=TradesOpenedLast6Months))+
+  geom_jitter(alpha=1/25)
+
+grid.arrange(T_trades_p, Months6_Trades_p)
+```
+
+As number of trades decrease, the prosper score gets better. We have jittered the plot for better visualization in overplotting.
+
+```{r}
+# box plot-prosper score as factor vs trades opened
+T_trades<-prosper_loan_data%>%
+  filter(ListingCreationDate>="2009-08-01")%>%
+ggplot(aes(x=as.factor(ProsperScore), y=TotalTrades))+
+  geom_boxplot()
+
+Months6_Trades<-prosper_loan_data%>%
+  filter(ListingCreationDate>="2009-08-01")%>%
+ggplot(aes(x=as.factor(ProsperScore), y=TradesOpenedLast6Months))+
+  geom_boxplot()
+
+grid.arrange(T_trades, Months6_Trades)
+```
+
+From the box plots also we see the same trend. Most total trades are below 38 total trades. For the more recent trades we see numbers below 2.5.
+
+Prosper Score vs debttoincomeratio:
+
+```{r}
+#scatter plot-prosper score as factor vs Debt to Income ratio
+prosper_loan_data%>%
+  filter(ListingCreationDate>="2009-08-01")%>%
+ggplot(aes(x=as.factor(ProsperScore), y=DebtToIncomeRatio))+
+  geom_jitter(alpha=1/25)+
+  coord_cartesian(ylim=c(0,2.5))
+
+```
+
+
+```{r}
+# box plot-prosper score as factor vs Debt to Income ratio
+prosper_loan_data%>%
+  filter(ListingCreationDate>="2009-08-01")%>%
+ggplot(aes(x=as.factor(ProsperScore), y=DebtToIncomeRatio))+
+  geom_boxplot()+
+  coord_cartesian(ylim=c(0,2.5))
+
+```
+
+We see that as debt to income ratio decrease, the prosper score gets better. So borrowers with better prosper score tend to have less debt and more income and thus likely to pay off their debt. Here for bott the scatter plot and box plot we have zoomed in on 0-2.5 on the y-axis to better visualize the trend.
+
+Prosper Score vs statedmonthlyincome:
+
+```{r}
+# scatter plot-prosper score as factor vs statedMonthlyIncome
+prosper_loan_data%>%
+  filter(ListingCreationDate>="2009-08-01")%>%
+ggplot(aes(x=as.factor(ProsperScore), y=StatedMonthlyIncome))+
+  geom_jitter(alpha=1/50)+
+  coord_cartesian(ylim = c(0, 15000))
+```
+
+```{r}
+#box plot-prosper score as factor vs Stated Monthly income
+prosper_loan_data%>%
+  filter(ListingCreationDate>="2009-08-01")%>%
+ggplot(aes(x=as.factor(ProsperScore), y=StatedMonthlyIncome))+
+  geom_boxplot()+
+  coord_cartesian(ylim = c(0, 20000))
+```
+
+We see that prosper score is related to stated monthly income. We had to use jitter and alpha to see the trend amongst overplotting in case of overplotting. Borrowers having higher monthly income have a better prosper score.The box plot show that most of the stated monthly income is 12000 or less.
+
+Now we will look at other bivariate relationships.
+
+The frequency of each prosper rating group per loan status group:
+
+```{r}
+#bar plot-proportion of each prosper rating group for each loan status group
+prosper_loan_data%>%
+    filter(ListingCreationDate>"2009-08-01")%>%
+   group_by(LoanStatus, ProsperRating..Alpha.)%>%
+  summarise(n=n())%>%
+  mutate(freq = n / sum(n))%>%
+  ggplot(aes(x=LoanStatus, y=freq, fill=ProsperRating..Alpha.))+
+  geom_bar(stat = "identity")+
+  geom_text(aes(label = round(freq,2)), size = 3, position = position_stack(vjust = 0.5))+
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+```
+
+We have plotted the fraction of each rating group foreach of the loan status group. We can see from the above frequency plot that D, E and HR groups make the most of chargedoff and defaulted borrowers. In the past due groups C, D and E dominates. 
+
+Next using the following variables we observe their effect mainly on the APR: BorrowerAPR, EstimatedLoss, EstimatedReturn, ProsperRating..numeric., EmploymentStatusDuration, CreditScoreRangeLower, DebtToIncomeRatio, StatedMonthlyIncome, TotalProsperLoans, TotalProsperPaymentsBilled, OnTimeProsperPayments, ProsperPrincipalOutstanding, LoanOriginalAmount.
+
+```{r fig.width=12, fig.height=12}
+#ggmatrix plot
+prosper_loan_data_subset<-prosper_loan_data%>%
+  select("BorrowerAPR", "EstimatedLoss", "EstimatedReturn", "ProsperRating..numeric.", "EmploymentStatusDuration", "CreditScoreRangeLower", "DebtToIncomeRatio", "StatedMonthlyIncome", "TotalProsperLoans", "TotalProsperPaymentsBilled", "OnTimeProsperPayments","ProsperPrincipalOutstanding" , "LoanOriginalAmount")
+prosper_loan_data_samp<- prosper_loan_data_subset[sample(1:length(prosper_loan_data_subset$BorrowerAPR), 10000),]
+ggpairs(prosper_loan_data_samp, 
+        lower = list(continuous = wrap("points", shape = I('.'))), 
+        upper = list(combo = wrap("box", outlier.shape = I('.'))),
+        columns=c("BorrowerAPR", "EstimatedLoss", "EstimatedReturn", "ProsperRating..numeric.", "EmploymentStatusDuration", "CreditScoreRangeLower", "DebtToIncomeRatio", "StatedMonthlyIncome", "TotalProsperLoans", "TotalProsperPaymentsBilled", "OnTimeProsperPayments","ProsperPrincipalOutstanding" , "LoanOriginalAmount"), columnLabels = c("APR", "Loss", "Return", "RatingNumerc", "EmploymentS", "CreditScore", "Debt/In", "MonthlyIn", "Loans", "Bill", "OnTime", "PrincipalOuts", "LoanAmount"))
+
+```
+
+From the above ggmatrix, we can see when the BorrowerAPR increases the estimated loss and estimated return increases. The APR also increases as ProsperRatings move from AA to HR.The Borrowers that have high estimated loss also has high estimated return. So they have a high APR which will lead to high returns if they pay off and high loss if don't pay.
+
+The proportion of each rating group per year from August 2009:
+
+```{r}
+#bar plot- proportion of each rating group for each year from August 2009
+prosper_loan_data%>%
+    filter(ListingCreationDate>"2009-08-01")%>%
+   group_by(ListingCreationYear, ProsperRating..Alpha.)%>%
+  summarise(n=n())%>%
+  mutate(freq = n / sum(n))%>%
+  ggplot(aes(x=ListingCreationYear, y=freq, fill=ProsperRating..Alpha.))+
+  geom_bar(stat = "identity")+
+  geom_text(aes(label = round(freq,2)), size = 3, position = position_stack(vjust = 0.5))
+```
+
+We wanted to see if over the years any prosper rating group is favored over others. From the plot we see that "A" is the most popular group in 2009. D" seems to be the most popular group of borrowers  for 2010-2011. HR in "2012", and "C" in 2013-2014. Although we just have 2 months of data for 2014. So that could change. So we can see that the higher risk grouos are actually favored for investing.
+
+If the proportion of bad(chargedoff/ defaulted) borrowers changed with time:
+
+It will also tell us if prospers new system is working or not in reducing chargeoffs and defaults. We plot the percent of bad(chargeoff, defaulted), good(completed) and current borrowers for each year to see the change.
+
+```{r}
+#bar plot-percent of bad borrowers
+bad<-prosper_loan_data%>%
+    filter(ListingCreationYear>2005)%>%
+   group_by(ListingCreationYear)%>%
+  summarise(freq_bad= (sum(LoanStatus=='Chargedoff')+sum(LoanStatus=='Defaulted'))/n())%>%
+    ggplot(aes(x=ListingCreationYear, y=freq_bad))+
+  geom_bar(stat="identity")+
+  ylim(0.0, 1.0)+
+  scale_x_continuous(breaks=seq(2006, 2014, 2))
+```
+
+
+```{r}
+#bar plot-percent of good borrowers
+good<-prosper_loan_data%>%
+    filter(ListingCreationYear>2005)%>%
+   group_by(ListingCreationYear)%>%
+  summarise(freq_good= (sum(LoanStatus=='Completed'))/n())%>%
+    ggplot(aes(x=ListingCreationYear, y=freq_good))+
+  geom_bar(stat="identity")+
+  ylim(0.0, 1.0)+
+  scale_x_continuous(breaks=seq(2006, 2014, 2))
+```
+
+```{r}
+#bar plot-percent of current borrowers
+current<-prosper_loan_data%>%
+    filter(ListingCreationYear>2005)%>%
+   group_by(ListingCreationYear)%>%
+  summarise(freq_current= (sum(LoanStatus=='Current'))/n())%>%
+    ggplot(aes(x=ListingCreationYear, y=freq_current))+
+  geom_bar(stat="identity")+
+  ylim(0.0, 1.0)+
+  scale_x_continuous(breaks=seq(2006, 2014, 2))
+```
+
+
+```{r}
+#all three plots
+grid.arrange(bad, good, current, ncol=3)
+
+```
+
+Percent of the different group of borrowers per year:
+
+```{r}
+#percent of bad good and current borrowers
+prosper_loan_data%>%
+   group_by(ListingCreationYear)%>%
+  summarise(total_bad= (sum(LoanStatus=='Chargedoff')+sum(LoanStatus=='Defaulted'))/n(), total_good= (sum(LoanStatus=='Completed'))/n(), total_current= (sum(LoanStatus=='Current'))/n())
+```
+
+We can see before the new system was in place the percentage of loss was pretty high (chargedoff, defaulted), Only from 2009 it became low. We have current borrowers still paying from 2010 and onwards. Their number increases as the year increases. From the data it can be seen that 2010 was close to 2009 in terms of bad and good borrowers. 2011 has about 30% current borrowers but their loss is already 19.1%. 2011 and onwards there is a lot of current borrowers. So we cannot really conclude how much the loss would be. May be when more data is available we can make a model of previous years to predict the loss.
+
+
+Loan amount vs term:
+
+```{r}
+#box plot:loan amount vs term
+ggplot(data=prosper_loan_data, aes(x=as.factor(Term), y=LoanOriginalAmount))+
+  geom_boxplot()
+
+```
+
+Lets now see if the loan amount depends on the number of months for which it is sanctioned. From the box plot, We can see as the loan amount increased, the borrowers were given more time to pay it back.
+
+Is there a relationship between loan amount and prosper rating:
+
+```{r}
+#box plot-loan amount vs rating
+ggplot(data=subset(prosper_loan_data, ListingCreationDate>="2009-08-01"), aes(x=ProsperRating..Alpha., y=LoanOriginalAmount))+
+  geom_boxplot()
+
+```
+
+From the boxplot We see as the prosper rating goes from better to worse the loan amounts decrease significantly. Especially E-HR group mostly can secure loan amounts of 5000 or less. D can mostly secure loan of 10000 or less. Whereas for rest of the groups 15000-16000 is a common loan amount. 
+
+BorrowerAPR vs Prosper Rating:
+
+```{r}
+#box plot-borrowerAPR vs rating
+ggplot(data=subset(prosper_loan_data, ListingCreationDate>="2009-08-01"), aes(x=ProsperRating..Alpha., y=BorrowerAPR))+
+  geom_boxplot()
+
+```
+
+From the boxplot we found the BorrowerAPR to be strongly related to the prosper ratings. The APR value is lower for AA and kept increasing as we moved through the consecutive risky ratings.
+
+
+# Bivariate Analysis
+
+### Talk about some of the relationships you observed in this part of the \
+investigation. How did the feature(s) of interest vary with other features in \
+the dataset?
+
+From the linear model of Estimated loss we found both credit score and prosper score explaining about 53.4 % of variance.
+
+We found that variables StatedMonthlyIncome, DebttoIcome ratio, TradesOpenedLast6Monsths, AvailableBankcardcredit, BankCardutilization DelinquenciesLast7years, TotalInquiries could influence the prosper score. For the ease of use of box plots (to see the range, IQR and medians), I transformed the prosper score to factor to see the relationships with other variables.
+
+### Did you observe any interesting relationships between the other features \
+(not the main feature(s) of interest)?
+
+It looks like A-D are the most popular group for lending.
+
+To determine loan performance I found out the frequency of each prosper rating group in each of the loan Status groups. Specifically I was interested in seeing the distribution of the rating in chargedoff and defaulted group. We found D, E and HR borrowers more than any other group in the charged off and defaulted section. 
+
+As expected we found the BorrowerAPR to be strongly related to the prosper ratings. The APR value is lower for AA and kept increasing as we moved through the consecutive risky ratings.
+
+I found that the loan amount sanctioned depends on the prosper rating as well. With 75% or more of the borrowers belonging to D, E and HR group receiving loans less than 10000.
+
+### What was the strongest relationship you found?
+
+From the figures, we can say that the available Bank credit and Debt to income ratio have a strong relationship to prosper score than the other variables tested.
+
+# Multivariate Plots Section
+
+Debt to income ratio vs trades opened in last 6 months:
+
+As observed in the previous section we saw that as the DebtToIncome Ratio decreases, trades opened in last 6 months increases. Our assumption was that more trades produce more income and hence the ratio decreases.
+
+```{r}
+ggplot(data=subset(prosper_loan_data, ListingCreationDate>="2009-08-01"), aes(y=DebtToIncomeRatio, x=TradesOpenedLast6Months))+
+  geom_jitter(alpha=1/15)+
+  xlim(0, 10)+
+  ylim(0, 1)+
+  geom_smooth()+
+  facet_wrap(~IncomeRange)
+```
+
+We plotted the debt to income ratio against trades opened in last 6 months faceted by income range. We see higher income range group have more trades opened in last 6 months. At first glance it feels that the debt to income ratio decreases as number of trades opened increases. But when we add a smooth curve to the plots we see that that's not the case. The ratio remains almost constant with the change of the number of trades opened in the last 6 month, irrespective of the income range. We have limited the x-axis and y-axis to get better visualization.
+
+
+How does ProsperScore and Credit Score dictate the ProsperRatings:
+
+```{r}
+prosper_loan_data%>%
+  filter(ProsperRating..Alpha.!='')%>%
+ggplot(aes(x=CreditScoreRangeLower, y=ProsperScore))+
+  geom_jitter(aes(color=ProsperRating..Alpha.), alpha=1/10)+
+guides(color = guide_legend(override.aes = list(alpha = 1)))
+
+```
+
+This plot show how the prosper rating is influenced by prosper score and credit score. High values of both score means AA rating and low values means HR. The rest falls in between with some overlapping. Thus there is other factors that contribute to the final Prosper rating.
+
+
+How does the prosperrating align with estimated loss vs estimated return:
+
+```{r}
+#scatter plot-estimated loss vs estimated return
+ggplot(data=subset(prosper_loan_data, ListingCreationDate>="2009-08-01"), aes(x=EstimatedLoss, y=EstimatedReturn))+
+  geom_point(aes(color=ProsperRating..Alpha.), alpha=1/5)+
+  geom_smooth()
+```
+
+We want to see how estimated loss and estimated return together influence the prosper rating. We can see for the most part as the loss increases return increases and vice versa. From the smooth curve we can see that the estimated return peaks at ProsperRating E, so the Estimated return is higher at E than any other group. D and HR seems to have similar returns. 
+
+Linear Model of ProsperScore:
+
+Based on the relationships we observed in the previous section we decided to construct a linear model of prosper score with TotalInquiries, DelinquenciesLast7Years, AvailableBankcardcredit, TradesOpenedLast6Months, DebtToIncomeRatio and StatedMonthlyIncome.
+
+```{r}
+#linear model-variables determining prosper score
+m1 <- lm(formula=ProsperScore~TotalInquiries, data = prosper_loan_data)
+m2 <- update(m1, ~ . + DelinquenciesLast7Years)
+m3 <- update(m2, ~ . + AvailableBankcardCredit)
+m4 <- update(m3, ~ . + TradesOpenedLast6Months)
+m5 <- update(m4, ~ . + DebtToIncomeRatio)
+m6 <- update(m5, ~ . + StatedMonthlyIncome)
+
+mtable(m1, m2, m3, m4, m5, m6)
+```
+
+From our linear model we can see that 25.1% of the variance in the prosper score can be explained by the tested variables. The p value is <0.05. So the result is significant. The added variables have made the model fit better. From the amount of variance explained by this model, we can say that there are definitely other factors that contribute to the prosper score
+
+The difference between estimated and annualized return:
+
+We need to calculate the annualized return to estimate how much annual return the investor is getting. We first calculate the invested amount by adding the loan original amount with service fees and collection fees. "-" sign is used to add service and collection fees as they are listed as "-"" value.Then the cummulative return (return obtained) and the annualized return are calculated. 
+[ref](http://stassajin.github.io/blog/Estimated-vs-Realized-Returns-for-over-100,000-Prosper-Loans/)
+
+```{r}
+#calculate invested amount
+prosper_loan_data<-prosper_loan_data%>%
+  mutate(invested_amount=LoanOriginalAmount-LP_ServiceFees-LP_CollectionFees)
+```
+
+```{r}
+#calculate amount investors received
+prosper_loan_data<-prosper_loan_data%>%
+  mutate(return_obtained=(LP_CustomerPayments-invested_amount)/invested_amount)%>%
+  mutate(annualized_return=(1 + return_obtained)^(12/Term) - 1)
+  
+```
+
+```{r}
+#line plot-estimated return vs annualized return
+prosper_loan_data%>%
+  group_by(ListingCreationDate)%>%
+  filter(ListingCreationDate>="2009-08-01" & ListingCreationYear<2014 & LoanStatus=='Completed')%>%
+  summarise(mean1=mean(annualized_return), mean2=mean(EstimatedReturn))%>%
+ggplot(aes(x=ListingCreationDate))+
+  geom_line(aes(y=mean1, colour="mean annualized return"))+
+  geom_line(aes(y=mean2, colour="mean estimated return"))
+```
+
+
+We plotted the mean of the estimated and anualized return per day against each listing creation day of the year. We see that the mean annualized daily return is less than the estimated return. What is interesting is that the annualized return was close to the estimated return in earlier years and the difference seems to have increased over time. This is opposite of what I had expected.
+
+# Multivariate Analysis
+
+### Talk about some of the relationships you observed in this part of the \
+investigation. Were there features that strengthened each other in terms of \
+looking at your feature(s) of interest?
+
+We saw here how the prosper score and credit score determines the prosper ratings. When both are good we get the best rating AA and we get HR when both are bad. The rest falls in between. 
+
+we created a linear model of variables that shape the prosper score.
+
+we saw the difference between the estimated return and the actual return. Actual return was close to estimated in earlier years and the difference seems to have increased over time. From the plot we can also say that prosper estimates higher return compared to the actual return that investors get.
+
+### Were there any interesting or surprising interactions between features?
+
+Yes. I found it really interesting that the difference between the estimated and annualized returns seem to have increased over time. This is opposite of what I had expected. As companies are looking for ways to improve so they polish their methods to better estimate the actual values.
+
+### OPTIONAL: Did you create any models with your dataset? Discuss the \
+strengths and limitations of your model.
+
+In the last part we were trying to identify some of the key variables that impact the prosper score. We found that variables StatedMonthlyIncome, DebttoIcome ratio, TradesOpenedLast6Monsths, AvailableBankcardcredit, DelinquenciesLast7years, TotalInquiries could answer 25% variance observed in prosper score.
+
+
+# Final Plots and Summary
+
+### Plot One
+
+```{r plot_one}
+#bar plot-percent of each rating group in each loan status group
+prosper_loan_data%>%
+    filter(ListingCreationDate>"2009-08-01")%>%
+   group_by(LoanStatus, ProsperRating..Alpha.)%>%
+  summarise(n=n())%>%
+  mutate(percent = 100*n / sum(n))%>%
+  ggplot(aes(x=LoanStatus, y=percent, fill=ProsperRating..Alpha.))+
+  geom_bar(stat = "identity")+
+  xlab("Loan Status")+
+  ylab("percent of each Prosper rating group")+
+  ggtitle("Percent of each Prosper rating group in each loan status group")+
+  geom_text(aes(label = round(percent,2)), size = 3, position = position_stack(vjust = 0.5))+
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+```
+
+### Description One
+We did this plot to determine how the Prosper rating groups are doing when paying off their loan. We see that D, E and HR groups make the most of chargedoff and defaulted borrowers. In the past due groups C, D and E dominates. 
+
+
+### Plot Two
+```{r plot_two}
+#box plot-rating vs loan amount
+ggplot(data=subset(prosper_loan_data, ListingCreationDate>="2009-08-01"), aes(x=ProsperRating..Alpha., y=LoanOriginalAmount))+
+  geom_boxplot()+
+  xlab("Prosper Rating")+
+  ylab("Amount of loan ($)")+
+  ggtitle("Prosper rating vs loan amount")
+```
+
+### Description Two
+We can see here that the prosper rating of the borrower influences the amount of loan they get. AA has a higher median loan amount than the rest. D, E and HR have the lowest median amounts. Interestingly the variation in the loan amount decreased as the ratings moved from AA to HR. AA to C has somewhat similar variance with each other. But E and HR variance is really low. So although high risk group are estimated to have higher return, prosper have checks in place to reduce the effect of loss of the investors.
+
+### Plot Three
+```{r plot_three}
+#line plot- estimated return vs annualized return
+prosper_loan_data%>%
+  group_by(ListingCreationDate)%>%
+  filter(ListingCreationDate>="2009-08-01" & ListingCreationYear<2014 & LoanStatus=='Completed')%>%
+  summarise(mean_annualized_return=mean(annualized_return), mean_estimated_return=mean(EstimatedReturn))%>%
+ggplot(aes(x=ListingCreationDate))+
+  geom_line(aes(y=mean_annualized_return, colour="mean annualized return"))+
+  geom_line(aes(y=mean_estimated_return, colour="mean estimated return"))+
+  xlab("Years")+
+  ylab("Average Daily Return (bps)")+
+  ggtitle("Comparison of Estimated return and the annualized return")
+```
+
+
+### Description Three
+In the above plot, We have plotted the mean estimated return per day and the mean annualized return per day against the ListingCreationDate. We see that the mean annualized daily returns is less than the estimated return. What is interesting is that the annualized return  was close to the estimated return in earlier years and the difference seems to have increased over time. Also we see the return being estimated higher than it actually is.
+
+# Reflection
+
+This dataset had 113937 records and 81 variables. So I found it overwhelming at first. Also I had difficulty understanding the variables. Although there definition were provided I still had to research to understand their meanings. I found this a good opportunity to work on a peer to peer lending company. I had to reasearch on how prosper works, to decide on the variables that I wanted to finally work with.
+
+The data set had records from 2005 to 2014. I focused on records after July 2009 as that was when prosper came up with significant changes to their processes. From my research I found that prosper ratings allow investors to consider a loan's level of risk because the rating represents an estimated average annualized loss rate range. I found that it is calculated mainly using credit score and prosper score. The prosper score is also calculated by prosper based on the historical prosper data. So I wanted to know which are the key variables that influence prosper score. I made a linear model with the prosper score as the response variable and a number of predictor variables. The predictor variables selected, were based on my research on how prosper works. I got a weak model that could explain 25% of the variation observed in prosper score. So further work needs to be done to improve the model with other variables or transformations of the existing variables. So that we can better predict the prosper score given the charateristics of the borrower.
+
+I was also interested in determining how much the investors are actually getting back from their investment in prosper compared to their estimated returns. I determined the annualized return from the invested amounts and the paid back amounts of the borrowers. Once plotted I saw that prosper overestimates it returns. Also in earlier years the estimated return was actually closer to the annualized return and later these diverged more. So this needs to be investigated further to determine if there was a flaw in my calculations. As one would expect the platform to be better over time.
+
+###Reference:
+https://www.investopedia.com/terms/a/annualized-total-return.asp
+http://stassajin.github.io/blog/Estimated-vs-Realized-Returns-for-over-100,000-Prosper-Loans/
+https://community.rstudio.com/t/how-to-manually-order-x-axis-on-bar-chart/9601/2
+https://sebastiansauer.github.io/dplyr_filter/
+https://stackoverflow.com/questions/24576515/relative-frequencies-proportions-with-dplyr
+https://stackoverflow.com/questions/6644997/showing-data-values-on-stacked-bar-chart-in-ggplot2
+https://sebastiansauer.github.io/dplyr_filter/
+https://investorjunkie.com/peer-to-peer-lending/prosper-review/
+https://www.lendacademy.com/explaining-expected-default-rate-and-estimated-loss-rate/
+https://investorjunkie.com/9328/lending-club-vs-prosper/
+https://www.prosper.com/plp/general-prosper_score/
+https://www.orchardplatform.com/blog/understanding-loan-statuses/
+https://www.prosper.com/plp/general-prosper_score/
+https://prosper.zendesk.com/hc/en-us/articles/208500586-What-are-Prosper-Ratings-
+https://www.prosper.com/invest/how-to-invest/prosper-ratings/?mod=article_inline
+http://blog.minitab.com/blog/adventures-in-statistics-2/what-is-the-f-test-of-overall-significance-in-regression-analysis
+https://stackoverflow.com/questions/40675778/center-plot-title-in-ggplot2
+https://rmarkdown.rstudio.com/lesson-3.html
+
